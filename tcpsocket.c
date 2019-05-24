@@ -35,15 +35,21 @@ int main(int argc, char const *argv[])
      WSADATA wsaData;
      time_t t;
      int listernport = 0;
+     int rawdatadispaly = 1;
      
      while (false) {
           printf("DEBUG:\r\n");
           printf("Socket_Packet_Head: %d\r\n", sizeof(Socket_Packet_Head));
           printf("Socket_Packet_Data: %d\r\n", sizeof(Socket_Packet_Data));
+          printf("Socket_Extend_Packet_Head: %d\r\n", sizeof(Socket_Extend_Packet_Head));
+          printf("Socket_Extend_Packet_Data: %d\r\n", sizeof(Socket_Extend_Packet_Data));
           printf("float: %d\r\n", sizeof(float));
           printf("argc:%d\r\n", argc);
           return 0;
      }
+     
+     printf("\r\nCar flow getway Socket tools V%d.%d\r\n", 0, 3);
+     printf("Copyright (C) 2019 Movebroad Design by Kangkang\r\n\r\n");
      
      if (argc < 2) {
           printf("Please Enter listen port. Example: 4001\r\n");
@@ -55,6 +61,13 @@ int main(int argc, char const *argv[])
           sscanf(argv[1], "%d", &listernport);
           printf("Listen port: %d\r\n", listernport);
      }
+     
+     if (argc >= 3) {
+          sscanf(argv[2], "%d", &rawdatadispaly);
+          printf("Raw Data Display: %d\r\n", rawdatadispaly);
+     }
+     
+     printf("\r\n");
      
      /* Init WSA */
      if (WSAStartup(sockVersion, &wsaData) != 0) {
@@ -259,44 +272,200 @@ int main(int argc, char const *argv[])
                                    pData = (Socket_Packet_Data*)&recvDataAll[sizeof(Socket_Packet_Head) + (i + 1) * sizeof(Socket_Packet_Data)];
                               }
                               
-                              int newline = 0;
-                              printf("RawData:\r\n");
-                              for (int i = 0; i < recvDataAllLen; i++) {
-                                   printf("%02X ", recvDataAll[i]);
-                                   newline++;
-                                   if (newline % 40 == 0) {
-                                        printf("\r\n");
+                              if (rawdatadispaly) {
+                                   int newline = 0;
+                                   printf("RawData:\r\n");
+                                   for (int i = 0; i < recvDataAllLen; i++) {
+                                        printf("%02X ", recvDataAll[i]);
+                                        newline++;
+                                        if (newline % 40 == 0) {
+                                             printf("\r\n");
+                                        }
                                    }
+                                   printf("\r\n");
                               }
-                              printf("\r\n");
                               
                               printf("\r\n");
                          }
                     }
                     
                     /* 扩展交通流量采集SocketExtend */
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
+                    if (ret >= (sizeof(Socket_Extend_Packet_Head) - 1)) {
+                         Socket_Extend_Packet_Head* pHead = (Socket_Extend_Packet_Head*)&recvData;
+                         Socket_Extend_Packet_Data* pData = NULL;
+                         if (pHead->StartX == SOCKET_EXTEND_STARTX) {
+                              
+                              time(&t);
+                              printf("%s", ctime(&t));
+                              printf("StartX     : 0x%X\r\n", pHead->StartX);
+                              printf("ServerType : 0x%X\r\n", pHead->ServerType);
+                              printf("DataLength : %d\r\n",   pHead->DataLength);
+                              printf("Channel    : %d\r\n",   pHead->Channel);
+                              printf("ExitX      : 0x%X\r\n", pHead->ExitX);
+                              printf("CheckCode  : 0x%X\r\n", pHead->CheckCode);
+                              printf("CrossID    : %c%c%c%c%c%c%c%c\r\n", \
+                              pHead->CrossID[0], pHead->CrossID[1], pHead->CrossID[2], pHead->CrossID[3], \
+                              pHead->CrossID[4], pHead->CrossID[5], pHead->CrossID[6], pHead->CrossID[7]);
+                              
+                              if ((pHead->ServerType & 0x0F) == SOCKET_EXTEND_SERVERTYPE_RTCCHECKINIT) {
+                                   /* 校时 */
+                                   unsigned char tcheckcodehead = 0;
+                                   unsigned char tcheckcodedata = 0;
+                                   unsigned int  tindex = 0;
+                                   
+                                   tindex += sizeof(pHead->StartX);
+                                   tcheckcodehead = recvData[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < (sizeof(Socket_Extend_Packet_Head) - sizeof(pHead->StartX) - sizeof(pHead->ExitX) - sizeof(pHead->CheckCode) - sizeof(pHead->DataCount)); i++) {
+                                        tcheckcodehead = tcheckcodehead ^ recvData[i];
+                                   }
+                                   
+                                   printf("MathCode   : 0x%X\r\n", tcheckcodehead);
+                                   if (tcheckcodehead == pHead->CheckCode) {
+                                        printf("Check success!\r\n");
+                                   }
+                                   else {
+                                        printf("Check fail!\r\n");
+                                   }
+                                   
+                                   unsigned char sendData[100];
+                                   int sendDataLen = 0;
+                                   memset((void*)sendData, 0x00, sizeof(sendData));
+                                   Socket_Extend_Packet_Head* pSendHead = (Socket_Extend_Packet_Head*)&sendData;
+                                   pSendHead->StartX     = pHead->StartX;
+                                   pSendHead->ServerType = pHead->ServerType;
+                                   for (int i = 0; i < sizeof(pHead->CrossID); i++) {
+                                        pSendHead->CrossID[i] = pHead->CrossID[i];
+                                   }
+                                   pSendHead->DataLength = 0x06;
+                                   pSendHead->Channel    = 0x00;
+                                   pSendHead->ExitX      = pHead->ExitX;
+                                   time_t tt;
+                                   struct tm *lt;
+                                   time(&tt);
+                                   lt = localtime(&tt);
+                                   sendData[16] = (lt->tm_year + 1900) - 2000;
+                                   sendData[17] = lt->tm_mon + 1;
+                                   sendData[18] = lt->tm_mday;
+                                   sendData[19] = lt->tm_hour;
+                                   sendData[20] = lt->tm_min;
+                                   sendData[21] = lt->tm_sec;
+                                   sendDataLen = 22;
+                                   
+                                   tindex = sizeof(pSendHead->StartX);
+                                   tcheckcodehead = sendData[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < (sizeof(Socket_Extend_Packet_Head) - 4); i++) {
+                                        tcheckcodehead = tcheckcodehead ^ sendData[i];
+                                   }
+                                   tindex = 16;
+                                   tcheckcodedata = sendData[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < 22; i++) {
+                                        tcheckcodedata = tcheckcodedata ^ sendData[i];
+                                   }
+                                   sendData[15] = tcheckcodedata ^ tcheckcodehead;
+                                   
+                                   printf("Send Ack Data!!\r\n");
+                                   printf("Send : ");
+                                   for (int i = 0; i < sendDataLen; i++) {
+                                        printf("%02X ", sendData[i]);
+                                   }
+                                   printf("\r\n");
+                                   
+                                   send(sClient, sendData, sendDataLen, 0);
+                              }
+                              
+                              if ((pHead->ServerType & 0x0F) == SOCKET_EXTEND_SERVERTYPE_RTCCHECKNONE) {
+                                   /* 状态 */
+                                   unsigned char tcheckcodehead = 0;
+                                   unsigned char tcheckcodedata = 0;
+                                   unsigned char tcheckcodeall  = 0;
+                                   unsigned int  tindex = 0;
+                                   
+                                   printf("DataCount  : %d\r\n",   pHead->DataCount);
+                                   
+                                   unsigned char recvDataAll[1024 * 4];
+                                   unsigned int  recvDataAllLen = 0;
+                                   
+                                   int mustRecvlen = pHead->DataCount * sizeof(Socket_Extend_Packet_Data) + sizeof(Socket_Extend_Packet_Head);
+                                   int surplusRecvlen = mustRecvlen - ret;
+                                   
+                                   printf("mustRecvlen    : %d\r\n", mustRecvlen);
+                                   printf("surplusRecvlen : %d\r\n", surplusRecvlen);
+                                   
+                                   memset((void*)recvDataAll, 0x00, sizeof(recvDataAll));
+                                   memcpy((void*)recvDataAll, recvData, ret);
+                                   recvDataAllLen += ret;
+                                   
+                                   while (surplusRecvlen > 0) {
+                                        memset((void*)recvData, 0x00, sizeof(recvData));
+                                        ret = recv(sClient, recvData, 1024 * 4, 0);
+                                        if (ret > 0) {
+                                             memcpy((void*)recvDataAll + recvDataAllLen, recvData, ret);
+                                             recvDataAllLen += ret;
+                                             surplusRecvlen -= ret;
+                                             printf("surplusRecvlen : %d\r\n", surplusRecvlen);
+                                        }
+                                   }
+                                   
+                                   pHead = (Socket_Extend_Packet_Head*)&recvDataAll;
+                                   pData = (Socket_Extend_Packet_Data*)&recvDataAll[sizeof(Socket_Extend_Packet_Head)];
+                                   
+                                   tindex += sizeof(pHead->StartX);
+                                   tcheckcodehead = recvDataAll[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < (sizeof(Socket_Extend_Packet_Head) - sizeof(pHead->StartX) - sizeof(pHead->ExitX) - sizeof(pHead->CheckCode) - sizeof(pHead->DataCount)); i++) {
+                                        tcheckcodehead = tcheckcodehead ^ recvDataAll[i];
+                                   }
+                                   tindex = sizeof(Socket_Extend_Packet_Head);
+                                   tcheckcodedata = recvDataAll[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < recvDataAllLen; i++) {
+                                        tcheckcodedata = tcheckcodedata ^ recvDataAll[i];
+                                   }
+                                   tcheckcodeall = tcheckcodehead ^ tcheckcodedata;
+                                   
+                                   printf("MathCode   : 0x%X\r\n", tcheckcodeall);
+                                   if (tcheckcodeall == pHead->CheckCode) {
+                                        printf("Check success!\r\n");
+                                   }
+                                   else {
+                                        printf("Check fail!\r\n");
+                                   }
+                                   
+                                   for (int i = 0; i < pHead->DataCount; i++) {
+                                        t = pData->SendTime - 8 * 60 * 60;
+                                        printf("--Time: %s", ctime(&t));
+                                        printf("LaneNo:%c%c%c   ", pData->DirverWayCode[0], pData->DirverWayCode[1], pData->DirverWayCode[2]);
+                                        printf("RecordNo:%d   ",            pData->RecordNo);
+                                        printf("VehicleCount:%d   ",        pData->VehicleCount);
+                                        printf("SmallVehilceCount:%d   ",   pData->SmallVehilceCount);
+                                        printf("AddUpHeadInterval:%d   ",   pData->AddUpHeadInterval);
+                                        printf("AddUpSpeed:%f   ",          pData->AddUpSpeed);
+                                        printf("AddUpOccupancy:%d   ",      pData->AddUpOccupancy);
+                                        printf("AddUpVehilcleLength:%f   ", pData->AddUpVehilcleLength);
+                                        printf("\r\n");
+                                        pData = (Socket_Extend_Packet_Data*)&recvDataAll[sizeof(Socket_Extend_Packet_Head) + (i + 1) * sizeof(Socket_Extend_Packet_Data)];
+                                   }
+                                   
+                                   if (rawdatadispaly) {
+                                        int newline = 0;
+                                        printf("RawData:\r\n");
+                                        for (int i = 0; i < recvDataAllLen; i++) {
+                                             printf("%02X ", recvDataAll[i]);
+                                             newline++;
+                                             if (newline % 40 == 0) {
+                                                  printf("\r\n");
+                                             }
+                                        }
+                                        printf("\r\n");
+                                   }
+                                   
+                                   printf("\r\n");
+                              }
+                         }
+                    }
                     
                     
                     
