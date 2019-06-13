@@ -48,7 +48,7 @@ int main(int argc, char const *argv[])
           return 0;
      }
      
-     printf("\r\nCar flow getway Socket tools V%d.%d\r\n", 0, 3);
+     printf("\r\nCar flow getway Socket tools V%d.%d\r\n", 0, 4);
      printf("Copyright (C) 2019 Movebroad Design by Kangkang\r\n\r\n");
      
      if (argc < 2) {
@@ -434,6 +434,40 @@ int main(int argc, char const *argv[])
                                         printf("Check fail!\r\n");
                                    }
                                    
+                                   unsigned char sendData[100];
+                                   int sendDataLen = 0;
+                                   memset((void*)sendData, 0x00, sizeof(sendData));
+                                   Socket_Extend_Packet_Head* pSendHead = (Socket_Extend_Packet_Head*)&sendData;
+                                   pSendHead->StartX     = pHead->StartX;
+                                   pSendHead->ServerType = pHead->ServerType;
+                                   for (int i = 0; i < sizeof(pHead->CrossID); i++) {
+                                        pSendHead->CrossID[i] = pHead->CrossID[i];
+                                   }
+                                   pSendHead->DataLength = 0x01;
+                                   pSendHead->Channel    = 0x00;
+                                   pSendHead->ExitX      = pHead->ExitX;
+                                   pSendHead->DataCount  = 0x99;
+                                   
+                                   tindex = sizeof(pSendHead->StartX);
+                                   tcheckcodehead = sendData[tindex];
+                                   tindex += 1;
+                                   for (int i = tindex; i < (sizeof(Socket_Extend_Packet_Head) - 4); i++) {
+                                        tcheckcodehead = tcheckcodehead ^ sendData[i];
+                                   }
+                                   tindex = 16;
+                                   tcheckcodedata = sendData[tindex];
+                                   sendData[15] = tcheckcodedata ^ tcheckcodehead;
+                                   sendDataLen = sizeof(Socket_Extend_Packet_Head);
+                                   
+                                   printf("Send Ack Data!!\r\n");
+                                   printf("Send : ");
+                                   for (int i = 0; i < sendDataLen; i++) {
+                                        printf("%02X ", sendData[i]);
+                                   }
+                                   printf("\r\n");
+                                   
+                                   send(sClient, sendData, sendDataLen, 0);
+                                   
                                    for (int i = 0; i < pHead->DataCount; i++) {
                                         t = pData->SendTime - 8 * 60 * 60;
                                         printf("--Time: %s", ctime(&t));
@@ -451,7 +485,8 @@ int main(int argc, char const *argv[])
                                    
                                    if (rawdatadispaly) {
                                         int newline = 0;
-                                        printf("RawData:\r\n");
+                                        static unsigned int rawDataCnt = 0;
+                                        printf("RawData: %d of count.\r\n", ++rawDataCnt);
                                         for (int i = 0; i < recvDataAllLen; i++) {
                                              printf("%02X ", recvDataAll[i]);
                                              newline++;
