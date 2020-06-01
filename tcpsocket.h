@@ -37,7 +37,7 @@ typedef struct __attribute__((packed)) Socket_Packet_Data
      float                    AvgSpeed;
      unsigned char            Saturation;
      unsigned short           Density;
-     unsigned short           Pcu;
+     unsigned short           Voltage;
      float                    AvgQueueLength;
 }Socket_Packet_Data;
 
@@ -125,12 +125,26 @@ typedef struct __attribute__((packed)) Socket_Extend_Packet_Data
      unsigned char            Reserver2;
 }Socket_Extend_Packet_Data;
 
+/* 讯飞流量采集SocketXunfei */
+#define	SOCKET_XUNFEI_DATA_TYPE_LOGIN_CON		101
+#define	SOCKET_XUNFEI_DATA_TYPE_LOGIN_ACK		201
+#define	SOCKET_XUNFEI_DATA_TYPE_FLOWT_CON		105
+#define	SOCKET_XUNFEI_DATA_TYPE_FLOWT_ACK		205
 
+typedef struct __attribute__((packed)) SOCKET_Xunfei_Data_TypeDef
+{
+     unsigned int			dataHead;
+	unsigned char			dataBody;
+}SOCKET_Xunfei_Data_TypeDef;
 
-
-
-
-
+typedef struct __attribute__((packed)) SOCKET_Xunfei_Parameter_TypeDef
+{
+     int					DirverWayCode;
+     int					Interval;
+	int					Volume;
+	int  				AvgSpeed;
+	int  				AvgLength;
+}SOCKET_Xunfei_Parameter_TypeDef;
 
 
 

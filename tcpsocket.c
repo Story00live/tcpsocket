@@ -48,7 +48,7 @@ int main(int argc, char const *argv[])
           return 0;
      }
      
-     printf("\r\nCar flow getway Socket tools V%d.%d\r\n", 0, 4);
+     printf("\r\nCar flow getway Socket tools V%d.%d\r\n", 2, 2);
      printf("Copyright (C) 2019 Movebroad Design by Kangkang\r\n\r\n");
      
      if (argc < 2) {
@@ -171,12 +171,12 @@ int main(int argc, char const *argv[])
                               
                               tcheckcode = recvDataAll[tdataindex];
                               tdataindex += 1;
-                              for (int i = tdataindex; i < recvDataAllLen - sizeof(Socket_Packet_Head) - sizeof(Socket_Packet_Last); i++) {
+                              for (int i = tdataindex; i < (recvDataAllLen - sizeof(Socket_Packet_Head) - sizeof(Socket_Packet_Last) + tdataindex - 1); i++) {
                                    tcheckcode = tcheckcode ^ recvDataAll[i];
                               }
                               
                               printf("MathCheckCode: %d\r\n", tcheckcode);
-                              if (tcheckcode = pLast->CheckCode) {
+                              if (tcheckcode == pLast->CheckCode) {
                                    printf("Check success!\r\n");
                               }
                               else {
@@ -266,7 +266,7 @@ int main(int argc, char const *argv[])
                                    printf("AvgSpeed:%f   ", pData->AvgSpeed);
                                    printf("Saturation:%d   ", pData->Saturation);
                                    printf("Density:%d   ", pData->Density);
-                                   printf("Pcu:%d   ", pData->Pcu);
+                                   printf("Voltage:%d   ", pData->Voltage);
                                    printf("AvgQueueLength:%f   ", pData->AvgQueueLength);
                                    printf("\r\n");
                                    pData = (Socket_Packet_Data*)&recvDataAll[sizeof(Socket_Packet_Head) + (i + 1) * sizeof(Socket_Packet_Data)];
@@ -501,6 +501,132 @@ int main(int argc, char const *argv[])
                               }
                          }
                     }
+                    
+                    /* 讯飞流量采集XunfeiSocket */
+                    if (ret >= sizeof(SOCKET_Xunfei_Data_TypeDef)) {
+                         SOCKET_Xunfei_Data_TypeDef* pXunfeiData = (SOCKET_Xunfei_Data_TypeDef*)&recvData;
+                         if (ntohl(pXunfeiData->dataHead) == (ret - sizeof(pXunfeiData->dataHead))) {
+                              
+                              int msgid = 0;
+	                         int msgtype = 0;
+                              
+                              system("cls");
+                              
+                              time(&t);
+                              printf("%s", ctime(&t));
+                              
+                              char* databuffer = (char*)&pXunfeiData->dataBody;
+                              
+                              if (sscanf(databuffer, "%d,%d,", &msgid, &msgtype) <= 0) {
+                                   continue;
+                              }
+                              
+                              /* 登陆请求 */
+                              if (msgtype == SOCKET_XUNFEI_DATA_TYPE_LOGIN_CON) {
+                                   char account[128];
+                                   char passwd[128];
+                                   
+                                   memset((void*)account, 0x00, sizeof(account));
+                                   memset((void*)passwd, 0x00, sizeof(passwd));
+                                   
+                                   if (sscanf(databuffer, "%d,%d,%[^,],%s", &msgid, &msgtype, account, passwd) <= 0) {
+                                        continue;
+                                   }
+                                   
+                                   printf("Account : %s    Passwd : %s    MsgID : %d    MsgType : %d\r\n", account, passwd, msgid, msgtype);
+                                   
+                                   unsigned char sendDataXunfei[100];
+                                   int sendDataXunfeiLen = 0;
+                                   
+                                   memset((void*)sendDataXunfei, 0x00, sizeof(sendDataXunfei));
+                                   
+                                   SOCKET_Xunfei_Data_TypeDef* pXunfeiSend = (SOCKET_Xunfei_Data_TypeDef*)&sendDataXunfei;
+                                   
+                                   char* databufferSend = (char*)&pXunfeiSend->dataBody;
+                                   
+                                   sprintf(databufferSend, "%d,%d,%d", msgid, SOCKET_XUNFEI_DATA_TYPE_LOGIN_ACK, 0);
+	                              pXunfeiSend->dataHead = htonl(strlen(databufferSend));
+                                   sendDataXunfeiLen = sizeof(pXunfeiSend->dataHead) + strlen(databufferSend);
+                                   
+                                   printf("Send : ");
+                                   for (int i = 0; i < sendDataXunfeiLen; i++) {
+                                        printf("%02X ", sendDataXunfei[i]);
+                                   }
+                                   printf("\r\n");
+                                   
+                                   send(sClient, sendDataXunfei, sendDataXunfeiLen, 0);
+                              }
+                              
+                              /* 车道交通流量 */
+                              if (msgtype == SOCKET_XUNFEI_DATA_TYPE_FLOWT_CON) {
+                                   char dateTimer[30];
+                                   unsigned int deviceCode = 0;
+                                   unsigned int dirverWayCode = 0;
+                                   unsigned int interval = 0;
+                                   unsigned int volume = 0;
+                                   unsigned int avgSpeed = 0;
+                                   unsigned int avgLength = 0;
+                                   
+                                   static SOCKET_Xunfei_Parameter_TypeDef dataXunfeiPara[32];
+                                   
+                                   for (int i = 0; i < 8; i++) {
+                                        dataXunfeiPara[i+ 0].DirverWayCode = 101 + i;
+                                        dataXunfeiPara[i+ 8].DirverWayCode = 201 + i;
+                                        dataXunfeiPara[i+16].DirverWayCode = 301 + i;
+                                        dataXunfeiPara[i+24].DirverWayCode = 401 + i;
+                                   }
+                                   
+                                   memset((void*)dateTimer, 0x00, sizeof(dateTimer));
+                                   
+                                   if (sscanf(databuffer, "%d,%d,%d,%d,%[^,],%d,%d,%d,%d", &msgid, &msgtype, &deviceCode, &dirverWayCode, dateTimer, &interval, &volume, &avgSpeed, &avgLength) <= 0) {
+                                        continue;
+                                   }
+                                   
+                                   printf("DeviceCode : %d    DirverWayCode : %d    MsgID : %d    MsgType : %d    ", deviceCode, dirverWayCode, msgid, msgtype);
+                                   printf("DateTimer : %s    Interval : %d    Volume : %d    AvgSpeed : %d    AvgLength : %d\r\n", dateTimer, interval, volume, avgSpeed, avgLength);
+                                   
+                                   for (int i = 0; i < 32; i++) {
+                                        if (dataXunfeiPara[i].DirverWayCode == dirverWayCode) {
+                                             dataXunfeiPara[i].Interval  = interval;
+                                             dataXunfeiPara[i].Volume   += volume;
+                                             dataXunfeiPara[i].AvgSpeed  = avgSpeed;
+                                             dataXunfeiPara[i].AvgLength = avgLength;
+                                        }
+                                   }
+                                   
+                                   printf("All : \r\n");
+                                   for (int i = 0; i < 32; i++) {
+                                        printf("DeviceCode : %8d    DirverWayCode : %3d    Interval : %2d    Volume : %5d    AvgSpeed : %5d    AvgLength : %5d\r\n", \
+                                        deviceCode, dataXunfeiPara[i].DirverWayCode, dataXunfeiPara[i].Interval, dataXunfeiPara[i].Volume, dataXunfeiPara[i].AvgSpeed, dataXunfeiPara[i].AvgLength);
+                                        if (((i+1) % 8) == 0) printf("\r\n");
+                                   }
+                                   
+                                   unsigned char sendDataXunfei[100];
+                                   int sendDataXunfeiLen = 0;
+                                   
+                                   memset((void*)sendDataXunfei, 0x00, sizeof(sendDataXunfei));
+                                   
+                                   SOCKET_Xunfei_Data_TypeDef* pXunfeiSend = (SOCKET_Xunfei_Data_TypeDef*)&sendDataXunfei;
+                                   
+                                   char* databufferSend = (char*)&pXunfeiSend->dataBody;
+                                   
+                                   sprintf(databufferSend, "%d,%d,%d", msgid, SOCKET_XUNFEI_DATA_TYPE_FLOWT_ACK, 0);
+	                              pXunfeiSend->dataHead = htonl(strlen(databufferSend));
+                                   sendDataXunfeiLen = sizeof(pXunfeiSend->dataHead) + strlen(databufferSend);
+                                   
+                                   printf("Send : ");
+                                   for (int i = 0; i < sendDataXunfeiLen; i++) {
+                                        printf("%02X ", sendDataXunfei[i]);
+                                   }
+                                   printf("\r\n");
+                                   
+                                   send(sClient, sendDataXunfei, sendDataXunfeiLen, 0);
+                              }
+                              
+                              printf("\r\n");
+                         }
+                    }
+                    
                     
                     
                     
